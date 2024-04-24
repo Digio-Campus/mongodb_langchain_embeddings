@@ -1,0 +1,23 @@
+{
+  "name": "mongodb_langchain_embeddings",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "ing": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@langchain/cohere": "^0.0.7",
+    "@langchain/community": "^0.0.50",
+    "@langchain/mongodb": "^0.0.1",
+    "@langchain/openai": "^0.0.28",
+    "langchain": "^0.1.35",
+    "ml-pca": "^4.1.1",
+    "mongodb": "^6.5.0",
+    "openai": "^4.38.3"
+  }
+}
