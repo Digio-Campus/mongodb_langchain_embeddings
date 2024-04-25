@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import {OpenAIEmbeddings} from "@langchain/openai";
 
 import {MongoClient, ObjectId} from 'mongodb';
-//import {Document} from 'langchain/document';
+import {Document} from 'langchain/document';
 
 import {RecursiveCharacterTextSplitter} from 'langchain/text_splitter';
 
@@ -10,8 +10,11 @@ const url = 'mongodb+srv://94juanvalera94:mongodbjuan@cluster0.sd2zhrd.mongodb.n
 const client = new MongoClient(url);
 await client.connect();
 const db = client.db('penguin');
+const collection = db.collection('vectors');
 
-const openai = new OpenAI({base_url: "http://127.0.0.1:8081/v1", api_key: "sk-no-key-required"})
+
+//const openai = new OpenAI({base_url: "http://127.0.0.1:8081/v1", api_key: "sk-no-key-required"})
+
 
 const story = "Once upon a time in the quirky town of Whimsyville, there was a particularly peculiar penguin named Percy. Unlike his fellow flightless friends, Percy had an insatiable desire to soar through the sky like a majestic eagle. So, armed with a pair of homemade wings fashioned from discarded banana peels and rubber bands, Percy embarked on his daring quest to defy gravity.\n" +
     "\n" +
@@ -23,11 +26,29 @@ const story = "Once upon a time in the quirky town of Whimsyville, there was a p
     "\n" +
     "From that day on, Percy became the unofficial mascot of the Pasta Festival, delighting residents with his comical antics and reminding everyone that sometimes, it's okay to just embrace who you are, feathers, spaghetti stains, and all. And as for Percy, he learned that while he may never soar through the sky, he could always soar in the hearts of his fellow Whimsyville inhabitants."
 
+/*
+const story = "n the bustling city of Lumina, nestled between skyscrapers and neon-lit streets, there exists a quaint café known as \"Euphoria Brews.\" Its exterior, adorned with cascading ivy and twinkling fairy lights, draws passersby into a world of warmth and charm.\n" +
+    "\n" +
+    "Stepping through the door, patrons are greeted by the aroma of freshly ground coffee beans mingling with the scent of homemade pastries. The interior is a delightful mishmash of vintage furniture, mismatched teacups, and cozy nooks, inviting guests to linger and unwind.\n" +
+    "\n" +
+    "At the heart of the café stands a majestic oak bar, where skilled baristas craft exquisite latte art with precision and flair. Each cup tells a story, a canvas of frothy milk and espresso swirls that reflect the passion and creativity of the artisans behind the counter.\n" +
+    "\n" +
+    "The walls are adorned with local artwork, a rotating gallery that showcases the talent and vibrancy of the community. Soft jazz music fills the air, setting a tranquil backdrop for lively conversations and quiet contemplation alike.\n" +
+    "\n" +
+    "In one corner, a bookcase overflows with well-loved novels and dog-eared poetry collections, inviting patrons to lose themselves in a literary escape. The gentle hum of conversation mingles with the occasional rustle of pages turning, creating a symphony of serenity.\n" +
+    "\n" +
+    "As daylight fades, the café transforms into a cozy haven aglow with the soft flicker of candlelight. Friends gather around wooden tables, sharing laughter and stories over steaming cups of cocoa, while couples steal quiet moments in secluded alcoves, lost in each other's company.\n" +
+    "\n" +
+    "Outside, the city buzzes with life, but within the walls of \"Euphoria Brews,\" time seems to stand still. It's a place where the worries of the world melt away, replaced by the simple joys of good company and delicious brews." +
+    " And as the evening draws to a close, patrons depart with contented smiles, already counting down the hours until their next visit to this enchanting oasis in the heart of Lumina."
 
-const collection = db.collection('vectors');
+ */
+const documentsToInsert = [new Document({
+    pageContent: story
+})]
 const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 350, // Cantidad de caracteres por fragmento
-    chunkOverlap: 100, // Cantidad de caracteres que se superpondrán entre fragmentos
+    chunkSize: 100, // Cantidad de caracteres por fragmento
+    chunkOverlap: 30, // Cantidad de caracteres que se superpondrán entre fragmentos
 });
 
 
@@ -38,8 +59,6 @@ const embeddings = new OpenAIEmbeddings({
         baseURL: "http://localhost:8080/v1",
     }
 });
-
-
 
 
 // Función para la inserción de datos en la base de datos
@@ -55,11 +74,9 @@ async function insertData(collection, embeddings, splitter, documentsToInsert) {
     console.log(insertManyResult);
 }
 
-
-// Función para la búsqueda vectorial y la interacción con el modelo de OpenAI
-async function vectorSearchAndModelInteraction(collection, embeddings, query, openai) {
+// Función para la búsqueda vectorial
+async function vectorSearch(collection, embeddings, query) {
     const vectorQuery = await embeddings.embedDocuments([query]);
-    console.log(vectorQuery);
     const agg = [
         {
             '$vectorSearch': {
@@ -67,7 +84,7 @@ async function vectorSearchAndModelInteraction(collection, embeddings, query, op
                 'path': 'vector',
                 'queryVector': vectorQuery[0],
                 'numCandidates': 100,
-                'limit': 5
+                'limit': 6
             }
         }, {
             '$project': {
@@ -81,21 +98,28 @@ async function vectorSearchAndModelInteraction(collection, embeddings, query, op
         }
     ];
     const aggregateResult = collection.aggregate(agg);
-    await aggregateResult.forEach((doc) => console.dir(JSON.stringify(doc)));
+    let results = [];
+    await aggregateResult.forEach((doc) => {
+        console.dir(JSON.stringify(doc));
+        results.push(doc);
+    });
+    return results;
+}
+
+// Función para la interacción con el modelo de OpenAI
+async function modelInteraction(openai, aggregateResult, query) {
     const completion = await openai.chat.completions.create({
         messages: [{role: "system", content: "This is the context to look for information " + aggregateResult},
             {role: "user", content: query}],
         model: "LLaMA_CPP",
     });
     console.log(completion.choices[0]);
+    return completion.choices[0];
 }
-
-const documentsToInsert = [new Document({
-    pageContent: story
-})]
 
 
 //await insertData(collection, embeddings, splitter, documentsToInsert);
-await vectorSearchAndModelInteraction(collection, embeddings, "What was Percy's desire?", openai);
-
+await vectorSearch(collection, embeddings, "Percy climbed");
+//await modelInteraction(openai, searchResults, "What was Percy's desire?");
+//console.log(modelOutput.message.content);
 await client.close()
