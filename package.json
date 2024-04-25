@@ -2,10 +2,11 @@
   "name": "mongodb_langchain_embeddings",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "Index.js",
   "type": "module",
   "scripts": {
-    "ing": "node index.js"
+    "ing": "node Index.js",
+    "search": "node Search.js"
   },
   "keywords": [],
   "author": "",
