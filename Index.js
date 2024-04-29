@@ -1,5 +1,4 @@
-import OpenAI from "openai";
-import {OpenAIEmbeddings} from "@langchain/openai";
+import {OpenAIEmbeddings, OpenAI, ChatOpenAI} from "@langchain/openai";
 
 import {MongoClient, ObjectId} from 'mongodb';
 import {Document} from 'langchain/document';
@@ -9,11 +8,18 @@ import {RecursiveCharacterTextSplitter} from 'langchain/text_splitter';
 const url = 'mongodb+srv://94juanvalera94:mongodbjuan@cluster0.sd2zhrd.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 const client = new MongoClient(url);
 await client.connect();
-const db = client.db('penguin');
+const db = client.db('penguin_phi-3');
 const collection = db.collection('vectors');
 
 
-//const openai = new OpenAI({base_url: "http://127.0.0.1:8081/v1", api_key: "sk-no-key-required"})
+const openai = new ChatOpenAI({
+    apiKey: "empty",
+    temperature: 0.0,
+    configuration: {
+        baseURL: "http://localhost:8080/v1",
+    },
+});
+
 
 
 const story = "Once upon a time in the quirky town of Whimsyville, there was a particularly peculiar penguin named Percy. Unlike his fellow flightless friends, Percy had an insatiable desire to soar through the sky like a majestic eagle. So, armed with a pair of homemade wings fashioned from discarded banana peels and rubber bands, Percy embarked on his daring quest to defy gravity.\n" +
@@ -66,10 +72,15 @@ async function insertData(collection, embeddings, splitter, documentsToInsert) {
     const docOutputToInsert = await splitter.splitDocuments(documentsToInsert);
     const pageContents = docOutputToInsert.map(document => document.pageContent);
     const vectors = await embeddings.embedDocuments(pageContents);
+    const containsPercysName = pageContents.map((pageContent, index) => ({
+        includesPercy: pageContent.includes("Percy"),
+        index: index
+    }));
     const insertManyResult = await collection.insertMany(vectors.map((vector, index) => ({
         id: index,
         document: docOutputToInsert[index],
-        vector
+        vector,
+        includesPercy: containsPercysName.find(item => item.index === index)?.includesPercy || false
     })));
     console.log(insertManyResult);
 }
@@ -86,7 +97,15 @@ async function vectorSearch(collection, embeddings, query) {
                 'numCandidates': 100,
                 'limit': 6
             }
-        }, {
+        },
+        /*   {
+               '$match': {
+                   'includesPercy': false
+               }
+           },
+
+         */
+        {
             '$project': {
                 '_id': 0,
                 'id': 1,
@@ -108,18 +127,20 @@ async function vectorSearch(collection, embeddings, query) {
 
 // Función para la interacción con el modelo de OpenAI
 async function modelInteraction(openai, aggregateResult, query) {
-    const completion = await openai.chat.completions.create({
-        messages: [{role: "system", content: "This is the context to look for information " + aggregateResult},
-            {role: "user", content: query}],
-        model: "LLaMA_CPP",
-    });
-    console.log(completion.choices[0]);
-    return completion.choices[0];
+    const messages = [{role: "system", content: "This is the context to look for information " + aggregateResult},
+        {role: "user", content: query}]
+    try {
+        const answer = await openai.invoke(messages)
+        console.log("Answer: ", answer)
+        return answer.content
+    } catch (error) {
+        console.log("Se ha producido un error: " + error);
+    }
 }
 
 
 //await insertData(collection, embeddings, splitter, documentsToInsert);
-await vectorSearch(collection, embeddings, "Percy climbed");
-//await modelInteraction(openai, searchResults, "What was Percy's desire?");
-//console.log(modelOutput.message.content);
+const searchResults = await vectorSearch(collection, embeddings, "Percy wanted to fly");
+const modelOutput = await modelInteraction(openai, searchResults, "What was Percy's desire?");
+console.log(modelOutput);
 await client.close()
